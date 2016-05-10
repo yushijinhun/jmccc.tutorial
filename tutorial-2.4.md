@@ -578,3 +578,257 @@ AuthInfo [username=yushijinhun, token=889af3a4d0f04277aaf3431f0a48a38e, uuid=8fa
 
 第3节到此便结束了，内容可能不太好理解，但只要各位多写代码运行运行就没问题。
 
+
+## 4. 下载游戏
+游戏下载是jmccc的一个可选功能，您必须确保您已经导入了`jmccc-mcdownloader`这个依赖。
+
+先介绍一下jmccc-mcdownloader中几个比较重要的类：
+ * MinecraftDownloader
+   * jmccc-mcdownloader中最为重要的类，提供了下载的接口方法。所有下载任务都是提供这个类提交上去的。
+ * MinecraftDownloaderBuilder
+   * 用来配置及创建MinecraftDownloader的类。下载时的代理、超时时间、下载源，如何检查缺失文件，缓存策略等都是通过这个类配置的。
+ * Callback
+   * 异步处理的回调接口。包含了`done()`，`failed()`，`cancelled()`三个回调方法，分别在任务成功完成、任务失败、任务被取消时调用。
+ * DownloadTask
+   * 代表了一个下载任务。每一个下载任务都有一个明确的URL表明数据来源。
+ * DownloadCallback
+   * 下载的异步处理的回调接口，继承自Callback。还包含了`updateProgress()`和`retry()`用来汇报下载时的进度和重试情况。
+ * CombinedDownloadTask
+   * 由多个下载任务组合而成的组合任务。每一个CombinedDownloadTask都可以派生出若干个DownloadTask。
+ * CombinedDownloadCallback
+   * 组合任务的异步处理的回调接口。还包含了`taskStart()`，在该CombinedDownloadTask派生出一个DownloadTask时会调用该方法。
+
+首先要搞清楚DownloadTask与CombinedDownloadTask的关系。DownloadTask是下载一个文件的任务，CombinedDownloadTask是由多个DownloadTask组合而成的任务。如下图：
+
+![DownloadTask与CombinedDownloadTask的关系](https://to2mbn.github.io/jmccc/images/CombinedDownloadTask-and-DownloadTask.png)
+
+
+要下载Minecraft，首先要创建一个MinecraftDownloader对象，可以通过以下方式：
+```java
+MinecraftDownloader downloader = MinecraftDownloaderBuilder.buildDefault();
+```
+
+然后便可以调用它的`downloadIncrementally(MinecraftDirectory, String, CombinedDownloadCallback<Version>)`方法来下载Minecraft了。
+
+其中第个一参数是.minecraft目录位置；第二个参数是版本名称，如`1.9`；第三个是回调接口，返回的是一个Version，代表实际下载到的Minecraft版本。
+
+downloadIncrementally方法会自动检查缺失的文件（如libraries、assets），并下载。
+
+MinecraftDownloader中所有的downloadXXX/fetchXXX方法都是异步的（当然也包括上面的downloadIncrementally）。调用之后会立即返回。任务完成后会通知回调。
+
+如下面的这段代码下载了Minecraft 1.9：
+（注：可以使用CallbackAdapter来避免接口内写重复的空方法，类似于swing的Adapter）
+```java
+package yushijinhun.jmccc.test;
+
+import org.to2mbn.jmccc.mcdownloader.MinecraftDownloader;
+import org.to2mbn.jmccc.mcdownloader.MinecraftDownloaderBuilder;
+import org.to2mbn.jmccc.mcdownloader.download.DownloadCallback;
+import org.to2mbn.jmccc.mcdownloader.download.DownloadTask;
+import org.to2mbn.jmccc.mcdownloader.download.concurrent.CallbackAdapter;
+import org.to2mbn.jmccc.option.MinecraftDirectory;
+import org.to2mbn.jmccc.version.Version;
+
+public class DownloadTest {
+
+        public static void main(String[] args) {
+                // 下载位置（要下载到的.minecraft目录）
+                MinecraftDirectory dir = new MinecraftDirectory("/home/yushijinhun/.minecraft");
+
+                // 创建MinecraftDownloader
+                MinecraftDownloader downloader = MinecraftDownloaderBuilder.create().build();
+
+                // 下载Minecraft1.9
+                downloader.downloadIncrementally(dir, "1.9", new CallbackAdapter<Version>() {
+
+                        @Override
+                        public void done(Version result) {
+                                // 当完成时调用
+                                // 参数代表实际下载到的Minecraft版本
+                                System.out.printf("下载完成，下载到的Minecraft版本：%s%n", result);
+                        }
+
+                        @Override
+                        public void failed(Throwable e) {
+                                // 当失败时调用
+                                // 参数代表是由于哪个异常而失败的
+                                System.out.printf("下载失败%n");
+                                e.printStackTrace();
+                        }
+
+                        @Override
+                        public void cancelled() {
+                                // 当被取消时调用
+                                System.out.printf("下载取消%n");
+                        }
+
+                        @Override
+                        public <R> DownloadCallback<R> taskStart(DownloadTask<R> task) {
+                                // 当有一个下载任务被派生出来时调用
+                                // 在这里返回一个DownloadCallback就可以监听该下载任务的状态
+                                System.out.printf("开始下载：%s%n", task.getURI());
+                                return new CallbackAdapter<R>() {
+
+                                        @Override
+                                        public void done(R result) {
+                                                // 当这个DownloadTask完成时调用
+                                                System.out.printf("子任务完成：%s%n", task.getURI());
+                                        }
+
+                                        @Override
+                                        public void failed(Throwable e) {
+                                                // 当这个DownloadTask失败时调用
+                                                System.out.printf("子任务失败：%s。原因：%s%n", task.getURI(), e);
+                                        }
+
+                                        @Override
+                                        public void cancelled() {
+                                                // 当这个DownloadTask被取消时调用
+                                                System.out.printf("子任务取消：%s%n", task.getURI());
+                                        }
+
+                                        @Override
+                                        public void retry(Throwable e, int current, int max) {
+                                                // 当这个DownloadTask因出错而重试时调用
+                                                // 重试不代表着失败
+                                                // 也就是说，一个DownloadTask可以重试若干次，
+                                                // 每次决定要进行一次重试时就会调用这个方法
+                                                // 当最后一次重试失败，这个任务也将失败了，failed()才会被调用
+                                                // 所以调用顺序就是这样：
+                                                // retry()->retry()->...->failed()
+                                                System.out.printf("子任务重试[%d/%d]：%s。原因：%s%n", current, max, task.getURI(), e);
+                                        }
+                                };
+                        }
+                });
+        }
+}
+```
+
+当下载成功时控制台输出：
+```
+开始下载：https://launchermeta.mojang.com/mc/game/version_manifest.json
+子任务完成：https://launchermeta.mojang.com/mc/game/version_manifest.json
+开始下载：https://launchermeta.mojang.com/mc/game/6768033e216468247bd031a0a2d9876d79818f8f/1.9.json
+子任务完成：https://launchermeta.mojang.com/mc/game/6768033e216468247bd031a0a2d9876d79818f8f/1.9.json
+开始下载：https://launchermeta.mojang.com/mc-staging/assets/1.9/092c59b361816c7fa7f000587caa977c515b179c/1.9.json
+开始下载：https://launcher.mojang.com/mc/game/1.9/client/2f67dfe8953299440d1902f9124f0f2c3a2c940f/client.jar
+开始下载：https://libraries.minecraft.net/com/mojang/authlib/1.5.22/authlib-1.5.22.jar
+子任务完成：https://launchermeta.mojang.com/mc-staging/assets/1.9/092c59b361816c7fa7f000587caa977c515b179c/1.9.json
+开始下载：http://resources.download.minecraft.net/4b/4b90ff3a9b1486642bc0f15da0045d83a91df82e
+子任务完成：http://resources.download.minecraft.net/4b/4b90ff3a9b1486642bc0f15da0045d83a91df82e
+子任务完成：https://libraries.minecraft.net/com/mojang/authlib/1.5.22/authlib-1.5.22.jar
+下载完成，下载到的Minecraft版本：1.9
+子任务完成：https://launcher.mojang.com/mc/game/1.9/client/2f67dfe8953299440d1902f9124f0f2c3a2c940f/client.jar
+```
+
+当下载失败时（通过拔网线实现）控制台输出：
+```
+开始下载：https://launchermeta.mojang.com/mc/game/version_manifest.json
+开始下载：https://launchermeta.mojang.com/mc/game/6768033e216468247bd031a0a2d9876d79818f8f/1.9.json
+子任务完成：https://launchermeta.mojang.com/mc/game/version_manifest.json
+子任务完成：https://launchermeta.mojang.com/mc/game/6768033e216468247bd031a0a2d9876d79818f8f/1.9.json
+开始下载：https://launchermeta.mojang.com/mc-staging/assets/1.9/092c59b361816c7fa7f000587caa977c515b179c/1.9.json
+开始下载：https://launcher.mojang.com/mc/game/1.9/client/2f67dfe8953299440d1902f9124f0f2c3a2c940f/client.jar
+开始下载：https://libraries.minecraft.net/com/mojang/authlib/1.5.22/authlib-1.5.22.jar
+子任务重试[1/3]：https://launcher.mojang.com/mc/game/1.9/client/2f67dfe8953299440d1902f9124f0f2c3a2c940f/client.jar。原因：java.net.UnknownHostException: launcher.mojang.com: unknown error
+子任务重试[2/3]：https://launcher.mojang.com/mc/game/1.9/client/2f67dfe8953299440d1902f9124f0f2c3a2c940f/client.jar。原因：java.net.UnknownHostException: launcher.mojang.com
+子任务失败：https://launcher.mojang.com/mc/game/1.9/client/2f67dfe8953299440d1902f9124f0f2c3a2c940f/client.jar。原因：java.net.UnknownHostException: launcher.mojang.com
+子任务重试[1/3]：https://libraries.minecraft.net/com/mojang/authlib/1.5.22/authlib-1.5.22.jar。原因：java.net.UnknownHostException: libraries.minecraft.net: unknown error
+子任务重试[2/3]：https://libraries.minecraft.net/com/mojang/authlib/1.5.22/authlib-1.5.22.jar。原因：java.net.UnknownHostException: libraries.minecraft.net
+子任务失败：https://libraries.minecraft.net/com/mojang/authlib/1.5.22/authlib-1.5.22.jar。原因：java.net.UnknownHostException: libraries.minecraft.net
+子任务取消：https://launchermeta.mojang.com/mc-staging/assets/1.9/092c59b361816c7fa7f000587caa977c515b179c/1.9.json
+下载失败
+java.net.UnknownHostException: launcher.mojang.com
+        at java.net.InetAddress.getAllByName0(InetAddress.java:1280)
+......// 此处省略
+```
+
+如果说要下载Minecraft版本列表，则需要调用`fetchRemoteVersionList(CombinedDownloadCallback<RemoteVersionList>)`方法。如下：
+```java
+    downloader.fetchRemoteVersionList(new CallbackAdapter<RemoteVersionList>() {
+
+            @Override
+            public void done(RemoteVersionList result) {
+                    System.out.printf("版本列表下载完成：%s%n", result);
+            }
+            
+            // ............省略其它方法
+    });
+```
+
+控制台输出如下：
+```
+版本列表下载完成：[latestSnapshot=1.RV-Pre1, latestRelease=1.9.2, versions={16w05b=RemoteVersion [version=16w05b, ............
+```
+
+注：如果说要在下载完后启动Minecraft的话，可以直接将Version对象传进LaunchOption的构造函数中。另外实际下载到的Minecraft的version id可能会与downloadIncrementally指定的不同，一般出现在下载forge时（下一节会有介绍）。
+
+当使用MinecraftDownloaderBuilder创建MinecraftDownloader时，可以通过方法链来自定义配置。下面是MinecraftDownloaderBuilder里的一些方法：
+
+|方法|意义|
+|----|----|
+|setMaxConnections(int)|设置下载时的最大链接数|
+|setMaxConnectionsPerRouter(int)|设置NIO下每个I/O Dispatcher线程的最大链接数|
+|setConnectTimeout(int)|设置连接超时的毫秒数|
+|setSoTimeout(int)|设置Socket超时的毫秒数|
+|setBaseProvider(MinecraftDownloadProvider)|设置下载源|
+|appendProvider(MinecraftDownloadProvider)|将一个拓展下载源添加到解析链中|
+|setPoolMaxThreads(int)|设置线程池的最大线程数|
+|setPoolThreadLivingTime(long)|设置线程池里线程在不使用后最大的存活时间（毫秒）|
+|setDefaultTries(int)|设置下载失败后最大的尝试次数（默认为3，不宜过大）|
+|setUseVersionDownloadInfo(boolean)|设置是否从json中指定的url下载（即1.9的新json格式，默认true）|
+|setCheckAssetsHash(boolean)|设置是否通过计算assets的hash来判断完整性（默认true）|
+|setCheckLibrariesHash(boolean)|设置是否通过计算libraries的hash来判断完整性（默认false，文件hash会与1.9新json中指定的hash值比较）|
+
+关于如何使用自定义的下载源，下面以BMCL API为例：
+```java
+package org.to2mbn.jmccc.mcdownloader.wiki.provider;
+
+import org.to2mbn.jmccc.mcdownloader.provider.DefaultLayoutProvider;
+
+public class BmclApiProvider extends DefaultLayoutProvider {
+
+        @Override
+        protected String getLibraryBaseURL() {
+                return "http://bmclapi2.bangbang93.com/libraries/";
+        }
+
+        @Override
+        protected String getVersionBaseURL() {
+                return "http://bmclapi2.bangbang93.com/versions/";
+        }
+
+        @Override
+        protected String getAssetIndexBaseURL() {
+                return "http://bmclapi2.bangbang93.com/indexes/";
+        }
+
+        @Override
+        protected String getVersionListURL() {
+                return "http://bmclapi2.bangbang93.com/mc/game/version_manifest.json";
+        }
+
+        @Override
+        protected String getAssetBaseURL() {
+                return "http://bmclapi2.bangbang93.com/assets/";
+        }
+
+}
+```
+
+然后只要在创建MinecraftDownloader时，调用setBaseProvider即可：
+```java
+MinecraftDownloader downloader = MinecraftDownloaderBuilder.create()
+        .setBaseProvider(new BmclApiProvider())
+        .build();
+```
+
+
+最后，您必须**手动关闭**MinecraftDownloader，否则MinecraftDownloader占用的资源将不会释放（如缓存、线程、链接等）：
+```java
+downloader.shutdown();
+```
+
+要注意的是，MinecraftDownloader是一个重量级对象，创建和销毁都会消耗大量的系统资源。所以在一般情况下推荐启动器全局**共用**一个MinecraftDownloader对象。
+
