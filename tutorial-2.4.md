@@ -861,6 +861,7 @@ downloader.download(liteloaderProvider.liteloaderVersionList(), new CallbackAdap
 > 上面省略了Callback中的方法
 
 对于`ForgeVersionList`，有以下方法：
+
 |方法|意义|
 |----|----|
 |getVersions()|获取所有的ForgeVersion。返回一个Map，key为build number。|
@@ -872,6 +873,7 @@ downloader.download(liteloaderProvider.liteloaderVersionList(), new CallbackAdap
 |getRecommended(String)|获取给定的minecraft版本推荐的ForgeVersion。|
 
 对于`LiteloaderVersionList`，有以下方法:
+
 |方法|意义|
 |----|----|
 |getLatests()|获取每个minecraft版本对应的最新的LiteloaderVersion。返回的是Map，key为minecraft版本，value为该版本对应的最新的LiteloaderVersion。|
