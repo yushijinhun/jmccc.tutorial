@@ -901,3 +901,342 @@ liteloaderVersion.customize(forgeVersion.getVersionName()).getVersionName()
 
 至此，Forge、Liteloader相关内容就讲解完了。
 
+
+## 6. 获取正版玩家的皮肤
+> 从本节开始，我们就将开始介绍jmccc的高级用法。一般来说，听不懂是正常的。;(手动斜眼
+
+第3节中，我们学到了YggdrasilAuthenticator。事实上，YggdrasilAuthenticator的底层是AuthenticationService，AuthenticationService提供了一组访问Yggdrasil服务的接口。而与AuthenticationService并行的就是ProfileService，提供了和游戏角色相关的接口。
+
+我们可以通过下面的方法来创建一个ProfileService：
+```java
+ProfileService profileService = YggdrasilServiceBuilder.defaultProfileService();
+```
+
+ProfileService中有三个方法，它们分别是：
+
+|方法|意义|
+|----|----|
+|lookupUUIDByName(String)|查询与玩家游戏中的名称对应的UUID。|
+|getGameProfile(UUID)|查询给定UUID的角色的信息。|
+|getTextures(GameProfile)|从给定的角色信息中获取皮肤（等）。|
+
+> 上面这三个方法都是要访问网络的，并且会阻塞，所以千万别脑残在UI线程之类的里面调用。
+
+下面给出一个例子：
+```java
+package yushijinhun.jmccc.test;
+
+import java.util.UUID;
+import org.to2mbn.jmccc.auth.AuthenticationException;
+import org.to2mbn.jmccc.auth.yggdrasil.core.GameProfile;
+import org.to2mbn.jmccc.auth.yggdrasil.core.PlayerTextures;
+import org.to2mbn.jmccc.auth.yggdrasil.core.ProfileService;
+import org.to2mbn.jmccc.auth.yggdrasil.core.yggdrasil.YggdrasilServiceBuilder;
+
+public class ProfileServiceTest {
+
+        public static void main(String[] args) throws AuthenticationException {
+                ProfileService profileService = YggdrasilServiceBuilder.defaultProfileService();
+
+                // 查询ztcjohn的uuid
+                UUID uuid = profileService.lookupUUIDByName("ztcjohn");
+                System.out.println(uuid);
+
+                // 根据uuid获取GameProfile
+                // 注意啦！假如lookupUUIDByName没找到对应玩家就会返回null。我这里因为是演示所以偷懒不做判断，大家写的时候记得一定要判断一下
+                GameProfile profile = profileService.getGameProfile(uuid);
+
+                // 获取GameProfile的皮肤
+                // 同上，假如getGameProfile没找到对应玩家就会返回null。我这里是偷懒，大家写的时候千万不要学
+                PlayerTextures textures = profileService.getTextures(profile);
+                System.out.println(textures);
+        }
+}
+
+```
+
+控制台输出：
+```
+469aa369-6304-40d4-8b99-7e63199677ac
+PlayerTextures [skin=Texture [url=http://textures.minecraft.net/texture/2b28e73ff96914596963cb468da14fdb5e36217a6e327e8353efb44ec71, metadata=null], cape=Texture [url=http://textures.minecraft.net/texture/efd61c3c4ac88f1a3468fbdeef45cec89e5afb87b97a1a845bfb3c64fd0b883, metadata=null], elytra=null]
+```
+
+可以看到ztcjohn不但有一个皮肤还有一个披风。getTextures方法返回的PlayerTextures包含了皮肤、披风、elytra（1.9新加的滑翔翼）。要注意的是，并不是每个角色都有这三个东西。
+
+（对不起咯～ztc喵）
+
+PlayerTextures只包含皮肤的url，具体图像需要再去下载。
+
+如果说要判断一个角色是Alex还是Steve，可以通过下面这个方法：
+```java
+public static boolean isAlex(PlayerTextures textures) {
+        Texture skin = textures.getSkin();
+        if (skin != null) {
+                Map<String, String> metadata = skin.getMetadata();
+                if (metadata != null) {
+                        return "slim".equals(metadata.get("model"));
+                }
+        }
+        return false;
+}
+```
+
+
+# 7. OS X下Dock相关配置
+官方启动器在OSX下时，启动Minecraft的时候会添加一些和Dock相关的参数，用来设置Minecraft在Dock中的呈现。（貌似是这样，本人没使用过OSX）
+
+在jmccc中，您需要将`ExtraArgumentsTemplates.OSX_DOCK_NAME`和`ExtraArgumentsTemplates.OSX_DOCK_ICON(MinecraftDirectory, Version)`的返回值加进JVM参数中。在此之前，**务必**要检查当前系统是否为OSX，这两个参数只有在OSX下的JVM里才是有效的。
+
+比如：
+```java
+MinecraftDirectory dir = new MinecraftDirectory(".minecraft");
+LaunchOption option = new LaunchOption("1.9", new OfflineAuthenticator("test_player"), dir);
+
+// 一定要先判断是否为OSX
+if (Platform.CURRENT == Platform.OSX) {
+        option.setExtraJvmArguments(Arrays.asList(
+                        ExtraArgumentsTemplates.OSX_DOCK_NAME,
+                        ExtraArgumentsTemplates.OSX_DOCK_ICON(dir, option.getVersion())));
+}
+```
+
+
+# 8. 忽略Forge的数字签名
+有些Forge版本要添加`-Dfml.ignoreInvalidMinecraftCertificates=true`和`-Dfml.ignorePatchDiscrepancies=true`这两项JVM参数才能正常启动。出现这种情况一般是往jar里塞了一些奇怪的东西，然后FML发现jar的数字签名损坏了。解决方法是往JVM参数列表里加上这两个参数（同前一节）。
+
+当然，jmccc是不会让您手动打这两项参数的。这两个参数都已经在`ExtraArgumentsTemplates`里面预定义好了，只需引用即可。
+
+```java
+option.setExtraJvmArguments(Arrays.asList(
+                ExtraArgumentsTemplates.FML_IGNORE_INVALID_MINECRAFT_CERTIFICATES,
+                ExtraArgumentsTemplates.FML_IGNORE_PATCH_DISCREPANCISE));
+```
+
+
+# 9. 使用HttpAsyncClient来进行下载
+下载Minecraft时一般会下载大量文件（上千个），如果逐一下载效率固然很低，所以jmccc是允许多个任务同时下载的。默认情况下，jmccc用的是jdk自带的BIO（阻塞式I/O），会给每一个链接打开一个线程。当链接数很大时，便会造成系统资源的严重浪费。解决方法是切换到NIO（非阻塞式I/O），这样仅用数个线程便可以处理上万个链接，将下载速度最大化。
+
+如果说要在jmccc中使用NIO来下载，则需要添加Apache HttpAsyncClient这个依赖：
+```
+org.apache.httpcomponents:httpasyncclient:4.1.1
+```
+
+jmccc在初始化时，如果发现classpath中存在HttpAsyncClient，则会自动使用HttpAsyncClient来下载。
+在将HttpAsyncClient添加到classpath中后，您便可以将最大链接数调到任意大了：
+```java
+MinecraftDownloader downloader = MinecraftDownloaderBuilder.create()
+        .setMaxConnections(4096)
+        .build();
+```
+
+比如这样将MaxConnections调到了4096，那么最多可以同时下载4096个文件。
+
+如果说您不想使用HttpAsyncClient，您可以调用MinecraftDownloaderBuilder的`disableApacheHttpAsyncClient()`来禁用对HttpAsyncClient的支持。这样jmccc就只会使用BIO来下载文件。
+
+
+# 10. 使用Ehcache缓存下载的文件
+jmccc有时候会多次下载同一个文件，这样就会造成不必要的网络I/O和等待时间。所以jmccc提供了对Ehcache的支持（Ehcache是最有名的一个轻量级Java缓存框架）。要启用这个缓存功能首先要将Ehcache添加到依赖，需要注意的是jmccc使用的是**Ehcache3**，不是2。
+
+> ehcache使用了slf4j作为logging框架，推荐您的项目中至少包含一个slf4j的实现。
+
+将ehcache添加到classpath之后，您便可以对缓存进行配置了。
+
+ehcache提供了三种类型的缓存：
+ * 堆上缓存（heap）
+   * 存储在java堆上的缓存
+ * 离堆缓存（offheap）
+   * 存储在本地内存中的缓存，在java堆之外，不受jvm托管
+ * 磁盘缓存（disk）
+   * 存储在磁盘上的缓存
+
+jmccc默认开启32MB的堆上缓存，不开启离堆缓存和磁盘缓存，缓存的有效时间是2小时。
+您可以使用下面的这些方法来设置缓存：
+
+|方法|意义|
+|----|----|
+|setHeapCacheSize(long)|设置Java堆上缓存的最大大小，0则不开启，单位：MB。|
+|setOffheapCacheSize(long)|设置离堆缓存（本地内存）的最大大小，0则不开启，单位：MB。|
+|setDiskCacheSize(long)|设置磁盘上缓存的最大大小，0则不开启，单位：MB。开启该功能后还需调用setDiskCacheDir(File)进行设置。|
+|setDiskCacheDir(File)|设置磁盘上用于存储缓存的目录。|
+|setCacheLiveTime(long, TimeUnit)|配置缓存的有效时间（TTL），超过该时间的缓存将被自动清除。|
+
+比如下面这段代码，只将最大为128M的缓存存储在磁盘上，有效时间1天：
+```java
+MinecraftDownloader downloader = MinecraftDownloaderBuilder.create()
+        .setHeapCacheSize(0) // 关闭堆上缓存
+        .setOffheapCacheSize(0) // 关闭离堆缓存
+        .setDiskCacheSize(128) // 开启最大为128MB的磁盘缓存
+        .setDiskCacheDir(new File("/tmp/jmccc-cache")) // 存储缓存的目录是/tmp/jmccc-cache
+        .setCacheLiveTime(1, TimeUnit.DAYS)// 缓存有效时间1天
+        .build();
+```
+
+如果说您不想使用缓存，那您可以调用MinecraftDownloaderBuilder的`disableEhcache()`方法来禁用对Ehcache的支持。
+
+
+## 11. 修改Minecraft1.9中的version_type
+大家用HMCL启动Minecraft1.9的时候可能会发现，Minecraft主界面下面有这样的东西：
+
+![HMCL修改version_type](https://to2mbn.github.io/jmccc/images/hmcl-version-type.png)
+
+这是怎么实现的呢？
+
+可以打开1.9.json看看，发现其中有这样一段：
+```json
+"minecraftArguments": "--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userType ${user_type} --versionType ${version_type}"
+```
+
+不知大家有没有注意到`${version_type}`这一个字符串。官方启动器在启动时会自动用Minecraft版本的type来代替这段字符串，比如`snapshot`、`release`，这样在Minecraft底部就显示为`Minecraft 1.9-pre2/snapshot`，`Minecraft 1.9/release`。但HMCL则将它替换为了`HMCL 2.4.1.41`。
+
+jmccc的行为默认和官方启动器一样，会将version_type指定为`Version.getType()`。但jmccc也提供了一个覆写该变量的方法，它就是第2节中介绍的setCommandlineVariables。
+
+我们可以手动指定`version_type`的值，如下：
+```java
+package yushijinhun.jmccc.test;
+
+import java.util.HashMap;
+import java.util.Map;
+import org.to2mbn.jmccc.auth.OfflineAuthenticator;
+import org.to2mbn.jmccc.launch.Launcher;
+import org.to2mbn.jmccc.launch.LauncherBuilder;
+import org.to2mbn.jmccc.option.LaunchOption;
+import org.to2mbn.jmccc.option.MinecraftDirectory;
+
+public class JmcccTest {
+
+        public static void main(String[] args) throws Exception {
+                Launcher launcher = LauncherBuilder.buildDefault();
+                LaunchOption option = new LaunchOption("1.9", new OfflineAuthenticator("test_user"), new MinecraftDirectory("/home/yushijinhun/.minecraft"));
+
+                // 重点：手动指定version_type
+                Map<String, String> vars = new HashMap<>();
+                vars.put("version_type", "JMCCC大法好！");
+                option.setCommandlineVariables(vars);
+
+                launcher.launch(option);
+        }
+}
+```
+
+运行效果：
+![JMCCC修改version_type](https://to2mbn.github.io/jmccc/images/jmccc-version-type.png)
+
+
+## 12. 使用自定义的Yggdrasil API提供商
+> 如果您没有深入了解过Yggdrasil服务，那么本节对您来说可能有些困难。
+> 
+> wiki.vg上有一篇介绍Yggdrasil的条目（英文）：[http://wiki.vg/Authentication](http://wiki.vg/Authentication)
+
+正版验证（即Yggdrasil）是Mojang提供的服务，但这不一定必须由Mojang提供。也就是说，您可以创建一套和Mojang并行的Yggdrasil服务，相当于Yggdrasil私服。事实上，yushijinhun（我）的authlib-agent项目就已经成功通过字节码操纵实现了对Minecraft内Yggdrasil API的重定向，并给出了一个Yggdrasil服务的开源实现。（本节的部分内容曾在第3节中出现，所以对下面的代码您可能会感到有些眼熟？）
+
+在jmccc中，如果要手动指定Yggdrasil API提供商，就得先为YggdrasilAPIProvider编写一个子类，里面定义API的URL。
+
+我在本地用authlib-agent架设了一个yggdrasil服务端，给YggdrasilAPIProvider编写的子类如下：
+```java
+package yushijinhun.jmccc.test;
+
+import java.util.UUID;
+import org.to2mbn.jmccc.auth.yggdrasil.core.yggdrasil.YggdrasilAPIProvider;
+import org.to2mbn.jmccc.util.UUIDUtils;
+
+public class yushijinhunYggdrasilAPIProvider implements YggdrasilAPIProvider {
+
+        @Override
+        public String authenticate() {
+                return "http://localhost:8080/yggdrasil/authenticate";
+        }
+
+        @Override
+        public String refresh() {
+                return "http://localhost:8080/yggdrasil/refresh";
+        }
+
+        @Override
+        public String validate() {
+                return "http://localhost:8080/yggdrasil/validate";
+        }
+
+        @Override
+        public String invalidate() {
+                return "http://localhost:8080/yggdrasil/invalidate";
+        }
+
+        @Override
+        public String signout() {
+                return "http://localhost:8080/yggdrasil/signout";
+        }
+
+        @Override
+        public String profile(UUID profileUUID) {
+                return "http://localhost:8080/yggdrasil/profiles/minecraft/" + UUIDUtils.unsign(profileUUID);
+        }
+
+        @Override
+        public String profileLookup() {
+                return "http://localhost:8080/yggdrasil/profilerepo/minecraft";
+        }
+}
+```
+
+然后您就可以用YggdrasilServiceBuilder来配置AuthenticationService和ProfileService了：
+```java
+YggdrasilServiceBuilder yggdrasilBuilder = YggdrasilServiceBuilder.create()
+        .setAPIProvider(new yushijinhunYggdrasilAPIProvider())
+        .loadSessionPublicKey("/home/yushijinhun/yushijinhun_yggdrasil_pubkey.der"); //(1)
+ProfileService profileService = yggdrasilBuilder.buildProfileService(); //(2)
+AuthenticationService authenticationService = yggdrasilBuilder.buildAuthenticationService(); //(3)
+```
+
+上面代码中(1)代表从`/home/yushijinhun/yushijinhun_yggdrasil_pubkey.der`这个文件中加载Yggdrasil的数字签名公钥。该文件应是PKCS#8格式的RSA证书的SubjectPublicKeyInfo部分（与mojang authlib使用的密钥格式相同）。您也可以使用`setSessionPublicKey(PublicKey)`方法直接设置公钥。
+
+(2)代表用上面的YggdrasilServiceBuilder创建一个ProfileService。这个ProfileService是绑定到上面指定的Yggdrasil API上的，上面第6节有介绍。
+
+(3)代表用上面的YggdrasilServiceBuilder创建一个AuthenticationService。这个AuthenticationService是绑定到上面指定的Yggdrasil API上的。
+
+您可以通过`new YggdrasilAuthenticator(authenticationService)`来创建一个使用指定的AuthenticationService的YggdrasilAuthenticator。
+
+需要注意的是，如果您要序列化YggdrasilAuthenticator，请**务必**重写`createAuthenticationServiceForDeserialization()`方法。这个方法用来在反序列化过程中重新创建AuthenticationService。
+```java
+package yushijinhun.jmccc.test;
+
+import java.io.IOException;
+import java.security.NoSuchAlgorithmException;
+import java.security.spec.InvalidKeySpecException;
+import org.to2mbn.jmccc.auth.yggdrasil.YggdrasilAuthenticator;
+import org.to2mbn.jmccc.auth.yggdrasil.core.AuthenticationService;
+import org.to2mbn.jmccc.auth.yggdrasil.core.yggdrasil.YggdrasilServiceBuilder;
+
+public class MyYggdrasilAuthenticator extends YggdrasilAuthenticator {
+
+        /**
+         * 创建一个我自定义的AuthenticationService。
+         * 
+         * @return 我自定义的AuthenticationService
+         */
+        private static AuthenticationService createMyAuthenticationService() {
+                try {
+                        return YggdrasilServiceBuilder.create()
+                                        .setAPIProvider(new yushijinhunYggdrasilAPIProvider())
+                                        .loadSessionPublicKey("/home/yushijinhun/yushijinhun_yggdrasil_pubkey.der")
+                                        .buildAuthenticationService();
+                } catch (NoSuchAlgorithmException | InvalidKeySpecException | IOException e) {
+                        throw new IllegalStateException("无法创建自定义的AuthenticationService！", e);
+                }
+        }
+
+        public MyYggdrasilAuthenticator() {
+                // 使用自定义的AuthenticationService
+                super(createMyAuthenticationService());
+        }
+
+        @Override
+        protected AuthenticationService createAuthenticationServiceForDeserialization() {
+                // 在反序列化过程中重新创建我自定义的AuthenticationService
+                return createMyAuthenticationService();
+        }
+}
+```
+
+题外话：由于某些原因（比如gfw），会导致国内有时候连不上Mojang的Yggdrasil服务，这时候可以用YggdrasilServiceBuilder的`setProxy(Proxy)`指定一个代理。
+
+
