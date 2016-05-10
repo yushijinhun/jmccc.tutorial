@@ -5,7 +5,7 @@ JMCCC是由 [@yushijinhun](https://github.com/yushijinhun) 和 [@Darkyoooooo](ht
  * 下载Minecraft
  * 下载并安装Forge/Liteloader
 
-并且JMCCC是开源的（[MIT许可证](https://to2mbn.github.io/jmccc/LICENSE.txt)），JMCCC在GitHub上的项目：[https://github.com/to2mbn/JMCCC](to2mbn/JMCCC)。
+并且JMCCC是开源的（[MIT许可证](https://to2mbn.github.io/jmccc/LICENSE.txt)），JMCCC在GitHub上的项目：[to2mbn/JMCCC](https://github.com/to2mbn/JMCCC)。
 
 本教程的适用人群：有一定经验的Java开发者
 
@@ -18,6 +18,7 @@ org.to2mbn:jmccc:2.4
 org.to2mbn:jmccc-yggdrasil-authenticator:2.4
 org.to2mbn:jmccc-mcdownloader:2.4
 ```
+
 假如您不使用Maven/Gradle，您就需要手动导入jar包，上述jar可以在[Maven中心仓库](https://search.maven.org/#search|ga|1|g%3A%22org.to2mbn%22)找到，并且还需要导入[org.json](https://search.maven.org/#search|ga|1|g%3A%22org.json%22%20a%3A%22json%22)和[tukaani xz](https://search.maven.org/#search%7Cga%7C1%7Cg%3A%22org.tukaani%22%20a%3A%22xz%22)这两个依赖。
 
 JMCCC要求的Java**最低版本**为Java7。
@@ -40,8 +41,7 @@ Launcher launcher = LauncherBuilder.create()
 |方法|意义|
 |----|----|
 |setDebugPrintCommandline(boolean)|（即上面的(1)）设置是否在启动时将启动参数输出到控制台以供调试，默认为false。|
-|setNativeFastCheck(boolean)|（即上面的(2)）设置是否开启对Natives文件的快速检查，默认为false。假如没有开启该选项，jmccc在启动时会对Natives文件进行全文比较来判断文件是否完整，如果发现Natives文件内容不一致，则将文件替换。
-开启该选项后，jmccc仅会通过比较文件大小来判断文件是否完整，这样可以加快启动速度，但有可能造成某些问题。|
+|setNativeFastCheck(boolean)|（即上面的(2)）设置是否开启对Natives文件的快速检查，默认为false。<br />假如没有开启该选项，jmccc在启动时会对Natives文件进行全文比较来判断文件是否完整，如果发现Natives文件内容不一致，则将文件替换。开启该选项后，jmccc仅会通过比较文件大小来判断文件是否完整，这样可以加快启动速度，但有可能造成某些问题。|
 
 接着，您需要创建一个`LaunchOption`来描述启动设置，比如：
 ```java
@@ -59,7 +59,7 @@ LaunchOption option = new LaunchOption("1.9", new OfflineAuthenticator("test_use
 |setWindowSize(WindowSize)|设置游戏窗口大小，默认为`null`（不指定）。例如 `WindowSize.fullscreen()` 方法返回一个代表全屏的WindowSize对象；`WindowSize.window(640, 480)` 返回一个代表了窗口大小是640x480的WindowSize。|
 |setExtraJvmArguments(List<String>)|设置额外的JVM参数，默认为`null`。相关的用法可以跳读到7、8节。|
 |setExtraMinecraftArguments(List<String>)|设置额外的Minecraft参数，默认为`null`。这些参数将被添加到默认Minecraft启动参数的末尾。|
-|setCommandlineVariables(Map<String, String>)|设置额外的命令行模板参数，通过该方法指定的参数可以覆盖默认的参数。`version.json`中的`minecraftArguments`是参数化的，其中`${...}`格式的字符串会被替换为对应变量的实际值。例如，`minecraftArguments`出现了`${a}`这样的字符串，并且通过该方法指定了`"a" -> "233"`，那么启动时`${a}`就会被替换为`233`。再例如，`minecraftArguments`中出现了`${version_name}`，则这段字符串在启动时将自动被Minecraft的版本号代替。但如果通过该方法指定了`"version_name" -> "abc"`，则`${version_name}`会被`abc`代替，而不是Minecraft版本号，因为`"version_name" -> "abc"`覆盖了默认的参数。为了帮助理解，下面给出一段Minecraft 1.8.9的`minecraftArguments`：`--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userProperties ${user_properties} --userType ${user_type}`。相关的使用可以跳读到第11节。|
+|setCommandlineVariables(Map<String, String>)|设置额外的命令行模板参数，通过该方法指定的参数可以覆盖默认的参数。<br />`version.json`中的`minecraftArguments`是参数化的，其中`${...}`格式的字符串会被替换为对应变量的实际值。<br />例如，`minecraftArguments`出现了`${a}`这样的字符串，并且通过该方法指定了`"a" -> "233"`，那么启动时`${a}`就会被替换为`233`。再例如，`minecraftArguments`中出现了`${version_name}`，则这段字符串在启动时将自动被Minecraft的版本号代替。但如果通过该方法指定了`"version_name" -> "abc"`，则`${version_name}`会被`abc`代替，而不是Minecraft版本号，因为`"version_name" -> "abc"`覆盖了默认的参数。<br />为了帮助理解，下面给出一段Minecraft 1.8.9的`minecraftArguments`：<br />`--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userProperties ${user_properties} --userType ${user_type}`<br />相关的使用可以跳读到第11节。|
 |setRuntimeDirectory(MinecraftDirectory)|设置Minecraft运行时使用的目录，默认和`getMinecraftDirectory()`一样（同上面(3)中构造方法的第三个参数）。这里指定的runtimeDirectory包含的是存档、资源包、截图等，而上面的minecraftDirectory包含的是游戏jar（versions）、库文件（libraries）、资源文件（assets）等。所以可以用这个方法来实现各版本独立。|
 
 
