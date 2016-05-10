@@ -832,3 +832,70 @@ downloader.shutdown();
 
 要注意的是，MinecraftDownloader是一个重量级对象，创建和销毁都会消耗大量的系统资源。所以在一般情况下推荐启动器全局**共用**一个MinecraftDownloader对象。
 
+
+## 5. 下载并安装Forge及Liteloader
+本节将介绍Forge、Liteloader版本列表的获取，以及Forge、Liteloader的下载安装。
+
+我们知道，Forge和Liteloader的版本在1.6（新.minecraft目录格式）之后，在versions目录中都是单独算一个版本的，比如`1.7.10-LiteLoader1.7.10`、`1.8.9-forge1.8.9-11.15.1.1757`。在jmccc也是这样，`1.7.10-LiteLoader1.7.10`、`1.8.9-forge1.8.9-11.15.1.1757`它们都是一个Minecraft版本，与`1.9`、`1.7.10`这样的版本是同等地位的，所以这些Forge、Liteloader版本可以像正常的Minecraft版本一样下载、启动。
+
+要支持Forge和Liteloader，首先要创建一个`ForgeDownloadProvider`和`LiteloaderDownloadProvider`。它们提供了对Forge、Liteloader的解析。然后通过MinecraftDownloaderBuilder的appendProvider方法将它们添加到MinecraftDownloader的解析链中：
+```java
+ForgeDownloadProvider forgeProvider = new ForgeDownloadProvider();
+LiteloaderDownloadProvider liteloaderProvider = new LiteloaderDownloadProvider();
+MinecraftDownloader downloader = MinecraftDownloaderBuilder.create()
+        .appendProvider(forgeProvider)
+        .appendProvider(liteloaderProvider)
+        .build();
+```
+
+注意：`appendProvider(liteloaderProvider)`需要在`appendProvider(forgeProvider)`之后调用，否则将不能下载同时Forge、Liteloader并存的版本。（否则责任链中LiteloaderDownloadProvider将无法把下载forge的任务传递到ForgeDownloadProvider）
+
+这样，这个MinecraftDownloader就具备了下载Forge、Liteloader的能力。
+
+要下载Forge或Liteloader，首先要获取它们的版本列表，如下：
+```java
+downloader.download(forgeProvider.forgeVersionList(), new CallbackAdapter<ForgeVersionList>() {...});
+downloader.download(liteloaderProvider.liteloaderVersionList(), new CallbackAdapter<LiteloaderVersionList>() {...});
+```
+
+> 上面省略了Callback中的方法
+
+对于`ForgeVersionList`，有以下方法：
+|方法|意义|
+|----|----|
+|getVersions()|获取所有的ForgeVersion。返回一个Map，key为build number。|
+|getLatests()|获取所有标记为latest的版本，即每个Minecraft版本所对应的最新的ForgeVersion。返回一个Map，key为minecraft版本，value是此minecraft版本对应的最新的ForgeVersion。|
+|getRecommendeds()|获取所有标记为recommended的版本，即每个Minecraft版本所对应的推荐的ForgeVersion。返回一个Map，key为minecraft版本，value是此minecraft版本对应的推荐的ForgeVersion。|
+|getLatest()|获取最最新的ForgeVersion。不考虑minecraft版本。|
+|getLatest(String)|获取给定的minecraft版本最新的ForgeVersion。|
+|getRecommended()|获取最新的推荐的ForgeVersion。不考虑minecraft版本。|
+|getRecommended(String)|获取给定的minecraft版本推荐的ForgeVersion。|
+
+对于`LiteloaderVersionList`，有以下方法:
+|方法|意义|
+|----|----|
+|getLatests()|获取每个minecraft版本对应的最新的LiteloaderVersion。返回的是Map，key为minecraft版本，value为该版本对应的最新的LiteloaderVersion。|
+|getLatest(String)|获取给定的minecraft版本最新的LiteloaderVersion。|
+
+> 因为Liteloader开发者所提供的api过于变态，因此不支持snapshot版本，并且只能下载某个minecraft版本对应的最新的liteloader。
+> （在2.5中会加入对liteloader snapshot的支持）
+
+在获取到要下载的ForgeVersion或LiteloaderVersion后就可以正常下载了，比如：
+```java
+// 这里的forgeVersion即要下载的forge版本
+downloader.downloadIncrementally(dir, forgeVersion.getVersionName(), new CallbackAdapter<Version>() {......});
+```
+
+可以看到和上文下载官方的minecraft版本并没有什么区别，只是使用了ForgeVersion的`getVersionName()`来作为要下载的minecraft的版本号罢了。要下载LiteloaderVersion如法炮制即可。
+
+
+如果说要下载一个Forge和Liteloader并存的minecraft该怎么办呢？
+
+假如我已经挑选好了ForgeVersion和LiteloaderVersion（forge和liteloader对应的minecraft版本要一致，不然肯定不能启动），那么只要将downloadIncrementally中的版本号替换为：
+```java
+liteloaderVersion.customize(forgeVersion.getVersionName()).getVersionName()
+```
+
+
+至此，Forge、Liteloader相关内容就讲解完了。
+
