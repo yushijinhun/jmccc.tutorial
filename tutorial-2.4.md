@@ -746,15 +746,15 @@ java.net.UnknownHostException: launcher.mojang.com
 
 如果说要下载Minecraft版本列表，则需要调用`fetchRemoteVersionList(CombinedDownloadCallback<RemoteVersionList>)`方法。如下：
 ```java
-    downloader.fetchRemoteVersionList(new CallbackAdapter<RemoteVersionList>() {
+downloader.fetchRemoteVersionList(new CallbackAdapter<RemoteVersionList>() {
 
-            @Override
-            public void done(RemoteVersionList result) {
-                    System.out.printf("版本列表下载完成：%s%n", result);
-            }
+        @Override
+        public void done(RemoteVersionList result) {
+                System.out.printf("版本列表下载完成：%s%n", result);
+        }
             
-            // ............省略其它方法
-    });
+    // ............省略其它方法
+});
 ```
 
 控制台输出如下：
