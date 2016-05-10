@@ -208,7 +208,7 @@ release
 YggdrasilAuthenticator类存储了一个正版验证的session。当每次向正版验证服务器刷新session时，YggdrasilAuthenticator都会将新的session存储起来，以备下次使用。假如说因为某种原因session失效了（如长时间不使用），YggdrasilAuthenticator则会要求提供密码来重新登录。
 
 
-![YggdrasilAuthenticator流程图](http://to2mbn.github.io/jmccc/images/YggdrasilAuthenticator.png)
+![YggdrasilAuthenticator流程图](https://to2mbn.github.io/jmccc/images/YggdrasilAuthenticator.png)
 
 注：上面的逻辑就是auth()方法中的逻辑。
 
@@ -312,6 +312,7 @@ AuthInfo [username=********, token=********, uuid=********, properties={}, userT
 可以看到虽然调用了使用了十次YggdrasilAuthenticator（`调用auth()`），但只向用户询问了一次密码。这说明YggdrasilAuthenticator记住了之前的登录状态。
 
 主动刷新是指，程序主动要求YggdrasilAuthenticator刷新session。可以通过调用下面两个方法实现：
+
 |方法|意义|
 |----|----|
 |refreshWithPassword(String, String)|用邮箱和密码来刷新当前session|
