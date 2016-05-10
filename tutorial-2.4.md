@@ -55,12 +55,12 @@ LaunchOption option = new LaunchOption("1.9", new OfflineAuthenticator("test_use
 |----|----|
 |setMaxMemory(int)|设置最大内存（MB），默认为1024。如果为0则不会添加`-Xmx`参数（即让JVM自己决定）。|
 |setMinMemory(int)|	设置最小内存（MB），默认为0。如果为0则不会添加`-Xms`参数（即让JVM自己决定）。|
-|setServerInfo(ServerInfo)|设置游戏启动后要自动进入的服务器，默认为`null`。例如 `new ServerInfo("localhost", 25565)` 就描述了在localhost的25565端口上的服务器。|
-|setWindowSize(WindowSize)|设置游戏窗口大小，默认为`null`（不指定）。例如 `WindowSize.fullscreen()` 方法返回一个代表全屏的WindowSize对象；`WindowSize.window(640, 480)` 返回一个代表了窗口大小是640x480的WindowSize。|
+|setServerInfo(ServerInfo)|设置游戏启动后要自动进入的服务器，默认为`null`。<br />例如 `new ServerInfo("localhost", 25565)` 就描述了在localhost的25565端口上的服务器。|
+|setWindowSize(WindowSize)|设置游戏窗口大小，默认为`null`（不指定）。<br />例如 `WindowSize.fullscreen()` 方法返回一个代表全屏的WindowSize对象；`WindowSize.window(640, 480)` 返回一个代表了窗口大小是640x480的WindowSize。|
 |setExtraJvmArguments(List<String>)|设置额外的JVM参数，默认为`null`。相关的用法可以跳读到7、8节。|
 |setExtraMinecraftArguments(List<String>)|设置额外的Minecraft参数，默认为`null`。这些参数将被添加到默认Minecraft启动参数的末尾。|
 |setCommandlineVariables(Map<String, String>)|设置额外的命令行模板参数，通过该方法指定的参数可以覆盖默认的参数。<br />`version.json`中的`minecraftArguments`是参数化的，其中`${...}`格式的字符串会被替换为对应变量的实际值。<br />例如，`minecraftArguments`出现了`${a}`这样的字符串，并且通过该方法指定了`"a" -> "233"`，那么启动时`${a}`就会被替换为`233`。再例如，`minecraftArguments`中出现了`${version_name}`，则这段字符串在启动时将自动被Minecraft的版本号代替。但如果通过该方法指定了`"version_name" -> "abc"`，则`${version_name}`会被`abc`代替，而不是Minecraft版本号，因为`"version_name" -> "abc"`覆盖了默认的参数。<br />为了帮助理解，下面给出一段Minecraft 1.8.9的`minecraftArguments`：<br />`--username ${auth_player_name} --version ${version_name} --gameDir ${game_directory} --assetsDir ${assets_root} --assetIndex ${assets_index_name} --uuid ${auth_uuid} --accessToken ${auth_access_token} --userProperties ${user_properties} --userType ${user_type}`<br />相关的使用可以跳读到第11节。|
-|setRuntimeDirectory(MinecraftDirectory)|设置Minecraft运行时使用的目录，默认和`getMinecraftDirectory()`一样（同上面(3)中构造方法的第三个参数）。这里指定的runtimeDirectory包含的是存档、资源包、截图等，而上面的minecraftDirectory包含的是游戏jar（versions）、库文件（libraries）、资源文件（assets）等。所以可以用这个方法来实现各版本独立。|
+|setRuntimeDirectory(MinecraftDirectory)|设置Minecraft运行时使用的目录，默认和`getMinecraftDirectory()`一样（同上面(3)中构造方法的第三个参数）。<br />这里指定的runtimeDirectory包含的是存档、资源包、截图等，而上面的minecraftDirectory包含的是游戏jar（versions）、库文件（libraries）、资源文件（assets）等。所以可以用这个方法来实现各版本独立。|
 
 
 然后您就可以通过调用`launch(LaunchOption)`方法启动游戏了：
@@ -196,4 +196,384 @@ release
 [18:02:03] [Client thread/WARN]: Author: Paul Lamb, www.paulscode.com
 游戏进程退出，状态码：0
 ```
+
+
+## 3. 正版登录
+正版登录是jmccc的一个**可选**功能，您必须确保您已经导入了`jmccc-yggdrasil-authenticator`这个依赖。
+
+（有必要解释一下yggdrasil的意思，yggdrasil就是mojang正版验证服务的代号）
+
+正版登录的功能由`YggdrasilAuthenticator`类提供。
+
+YggdrasilAuthenticator类存储了一个正版验证的session。当每次向正版验证服务器刷新session时，YggdrasilAuthenticator都会将新的session存储起来，以备下次使用。假如说因为某种原因session失效了（如长时间不使用），YggdrasilAuthenticator则会要求提供密码来重新登录。
+
+
+![YggdrasilAuthenticator流程图](http://to2mbn.github.io/jmccc/images/YggdrasilAuthenticator.png)
+
+注：上面的逻辑就是auth()方法中的逻辑。
+
+### 3.1. 如何创建一个YggdrasilAuthenticator？
+YggdrasilAuthenticator有两个工厂方法，分别是`YggdrasilAuthenticator.password(String, String)`和`YggdrasilAuthenticator.token(String, String)`。（这两个方法还有若干重载）
+
+|方法|意义|
+|----|----|
+|password(String, String)|创建一个YggdrasilAuthenticator，并用所给的密码初始化。|
+|token(String, String)|创建一个YggdrasilAuthenticator，并用所给的token初始化。|
+
+使用上面这两个方法创建的YggdrasilAuthenticator都已经存储着了一个有效的session，因此您可以直接将它们拿来使用：（举第2节中的例子）
+```java
+LaunchOption option = new LaunchOption("1.9", YggdrasilAuthenticator.password("email@xxx.com", "password"), new MinecraftDirectory(".minecraft"));
+```
+
+需要注意的是YggdrasilAuthenticator有一个无参的构造方法。不同于上面的两个工厂方法，用这个构造方法创建出来的YggdrasilAuthenticator是不带有有效的session的。也就是说，`new YggdrasilAuthenticator()`创建出来的YggdrasilAuthenticator要刷新一次之后才能使用。
+
+### 3.2. 如何刷新YggdrasilAuthenticator中的session？
+YggdrasilAuthenticator中session的刷新分为**被动刷新**和**主动刷新**。
+
+被动刷新就像本节一开始所说的，当要使用YggdrasilAuthenticator进行验证，但当前的session又无效时，就需要向用户询问密码来重新登录，用户此时是被动的。
+
+YggdrasilAuthenticator默认情况下是不允许被动刷新的（因为YggdrasilAuthenticator不知道如何与用户交互），此时您需要为YggdrasilAuthenticator编写子类来实现被动刷新，例如：
+```java
+package yushijinhun.jmccc.test;
+
+import java.util.Scanner;
+import org.to2mbn.jmccc.auth.AuthenticationException;
+import org.to2mbn.jmccc.auth.yggdrasil.YggdrasilAuthenticator;
+
+public class MyYggdrasilAuthenticator extends YggdrasilAuthenticator {
+
+        // 下面两个构造方法并没有什么好看的
+        // 从超类生成过来的罢了
+        public MyYggdrasilAuthenticator() {
+                super();
+        }
+
+        public MyYggdrasilAuthenticator(AuthenticationService sessionService) {
+                super(sessionService);
+        }
+
+        @Override
+        protected PasswordProvider tryPasswordLogin() throws AuthenticationException {
+                // 这个方法会在进行被动刷新时调用
+
+                // 向用户询问邮箱与密码
+                Scanner scanner = new Scanner(System.in);
+                System.out.print("邮箱：");
+                String email = scanner.nextLine();
+                System.out.print("密码：");
+                String password = scanner.nextLine();
+
+                return YggdrasilAuthenticator.createPasswordProvider(email, password, null);
+        }
+
+}
+```
+
+我们可以来测试一下：
+```java
+package yushijinhun.jmccc.test;
+
+import org.to2mbn.jmccc.auth.AuthenticationException;
+import org.to2mbn.jmccc.auth.yggdrasil.YggdrasilAuthenticator;
+
+public class AuthTest {
+
+        public static void main(String[] args) throws AuthenticationException {
+                // 用无参构造函数创建的YggdrasilAuthenticator是不带有session的。
+                // 所以在第一次使用YggdrasilAuthenticator时会触发一次被动刷新，
+                // 要求用户输入邮箱和密码。
+                YggdrasilAuthenticator authenticator = new MyYggdrasilAuthenticator();
+
+                // 循环十次要求提供登录信息
+                for (int i = 0; i < 10; i++)
+                        System.out.println(authenticator.auth());
+        }
+}
+```
+
+控制台输出：
+```
+邮箱：********@qq.com
+密码：********
+AuthInfo [username=********, token=********, uuid=********, properties={}, userType=mojang]
+AuthInfo [username=********, token=********, uuid=********, properties={}, userType=mojang]
+AuthInfo [username=********, token=********, uuid=********, properties={}, userType=mojang]
+AuthInfo [username=********, token=********, uuid=********, properties={}, userType=mojang]
+AuthInfo [username=********, token=********, uuid=********, properties={}, userType=mojang]
+AuthInfo [username=********, token=********, uuid=********, properties={}, userType=mojang]
+AuthInfo [username=********, token=********, uuid=********, properties={}, userType=mojang]
+AuthInfo [username=********, token=********, uuid=********, properties={}, userType=mojang]
+AuthInfo [username=********, token=********, uuid=********, properties={}, userType=mojang]
+AuthInfo [username=********, token=********, uuid=********, properties={}, userType=mojang]
+```
+
+> 因为是个人敏感信息，所以我就无耻的打码了
+
+可以看到虽然调用了使用了十次YggdrasilAuthenticator（`调用auth()`），但只向用户询问了一次密码。这说明YggdrasilAuthenticator记住了之前的登录状态。
+
+主动刷新是指，程序主动要求YggdrasilAuthenticator刷新session。可以通过调用下面两个方法实现：
+|方法|意义|
+|----|----|
+|refreshWithPassword(String, String)|用邮箱和密码来刷新当前session|
+|refreshWithToken(String, String)|用token来刷新当前session|
+
+我们来测试一下：
+```java
+package yushijinhun.jmccc.test;
+
+import org.to2mbn.jmccc.auth.AuthenticationException;
+import org.to2mbn.jmccc.auth.yggdrasil.YggdrasilAuthenticator;
+
+public class AuthTest {
+
+        public static void main(String[] args) {
+                // 这样创建的YggdrasilAuthenticator不带有有效session
+                // 并且我们也没有实现被动刷新
+                YggdrasilAuthenticator authenticator = new YggdrasilAuthenticator();
+
+                // 第一次使用YggdrasilAuthenticator
+                // 由于没有有效session，并且也无法进行被动刷新
+                // 所以会出错
+                try {
+                        System.out.println(authenticator.auth());
+                } catch (AuthenticationException e) {
+                        e.printStackTrace();
+                }
+
+                // 此时我们主动去刷新它
+                try {
+                        authenticator.refreshWithPassword("email@xxx.com", "password");
+                } catch (AuthenticationException e) {
+                        e.printStackTrace();
+                }
+
+                // 第二次使用YggdrasilAuthenticator
+                // 由于经过主动刷新，已经有有效的session了
+                // 所以成功执行
+                try {
+                        System.out.println(authenticator.auth());
+                } catch (AuthenticationException e) {
+                        e.printStackTrace();
+                }
+        }
+}
+```
+
+控制台输出：
+```
+org.to2mbn.jmccc.auth.AuthenticationException: no more authentication methods to try
+        at org.to2mbn.jmccc.auth.yggdrasil.YggdrasilAuthenticator.refresh(YggdrasilAuthenticator.java:293)
+        at org.to2mbn.jmccc.auth.yggdrasil.YggdrasilAuthenticator.session(YggdrasilAuthenticator.java:265)
+        at org.to2mbn.jmccc.auth.yggdrasil.YggdrasilAuthenticator.auth(YggdrasilAuthenticator.java:236)
+        at yushijinhun.jmccc.test.AuthTest.main(AuthTest.java:17)
+AuthInfo [username=********, token=********, uuid=********, properties={}, userType=mojang]
+```
+
+有一点要注意：在编写和用户交互的启动器时，**使用被动刷新**。尽量不用YggdrasilAuthenticator.password()和token()这些工厂方法，也尽量避免主动刷新。因为出现被动刷新只有在**真的有必要**要用密码登录时才会发生。
+
+### 3.3. 如何保存登录信息？
+一般情况下我们的启动器都会有个“记住密码”的功能。但难道启动器真的保存了密码吗？这显然是不安全的。事实上启动器保存的是上次的session，到下一次再打开启动器时，便会加载上次的session。
+
+那么如何在jmccc中实现这个功能呢？答案有两个。
+
+第一种办法是直接序列化YggdrasilAuthenticator。此时YggdrasilAuthenticator中所含的session将一同被序列化。示例如下：
+```java
+package yushijinhun.jmccc.test;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import org.to2mbn.jmccc.auth.AuthenticationException;
+import org.to2mbn.jmccc.auth.yggdrasil.YggdrasilAuthenticator;
+
+public class AuthTest {
+
+        public static void main(String[] args) throws Exception {
+                // 找一个临时文件
+                File file = File.createTempFile("jmccc-test", ".dat");
+
+                saveAuth(file);
+                loadAuth(file);
+        }
+
+        /**
+         * 创建一个YggdrasilAuthenticator并把它序列化到文件里。
+         *
+         * @param file 要保存到的文件
+         * @throws AuthenticationException 假如出现验证错误
+         * @throws IOException 假如出现I/O异常
+         */
+        static void saveAuth(File file) throws AuthenticationException, IOException {
+                // 用密码创建一个包含有效session的YggdrasilAuthenticator
+                YggdrasilAuthenticator authenticator = YggdrasilAuthenticator.password("email@xxx.com", "password");
+
+                try (ObjectOutputStream out = new ObjectOutputStream(new FileOutputStream(file))) {
+                        // 序列化YggdrasilAuthenticator
+                        out.writeObject(authenticator);
+                }
+
+                System.out.printf("YggdrasilAuthenticator已保存到%s%n", file);
+        }
+
+        /**
+         * 从文件里加载YggdrasilAuthenticator，并把它的session输出出来。
+         *
+         * @param file 要加载YggdrasilAuthenticator的文件
+         * @throws AuthenticationException 假如出现验证错误
+         * @throws IOException 假如出现I/O异常
+         * @throws ClassNotFoundException 假如类未找到（反序列化错误）
+         */
+        static void loadAuth(File file) throws AuthenticationException, IOException, ClassNotFoundException {
+                YggdrasilAuthenticator authenticator;
+                try (ObjectInputStream in = new ObjectInputStream(new FileInputStream(file))) {
+                        // 反序列化YggdrasilAuthenticator
+                        authenticator = (YggdrasilAuthenticator) in.readObject();
+                }
+
+                System.out.printf("从%s中加载了一个YggdrasilAuthenticator%n", file);
+                System.out.printf("调用YggdrasilAuthenticator的auth()：%s%n", authenticator.auth());
+        }
+
+}
+```
+
+控制台输出：
+```
+YggdrasilAuthenticator已保存到/tmp/jmccc-test3142550737446373738.dat
+从/tmp/jmccc-test3142550737446373738.dat中加载了一个YggdrasilAuthenticator
+调用YggdrasilAuthenticator的auth()：AuthInfo [username=********, token=********, uuid=********, properties={}, userType=mojang]
+```
+
+另一种方式是，调用`getCurrentSession()`返回当前的session（可能为`null`），然后将这个对象序列化。下一次时使用无参的构造方法创建YggdrasilAuthenticator，然后调用`setCurrentSession(Session)`将session设置回去。在此便不多叙述。
+
+### 3.4. 如何实现角色的选择？
+对于这一段的小标题读者可能不大理解，什么叫角色选择呢？其实Yggdrasil允许一个账户拥有**多个**角色，这里的角色就可以相当于minecraft中的玩家。当然，mojang目前似乎还没开放这个功能。但可以通过使用第三方的Yggdrasil服务提供商体验一下（比如通过[authlib-agent](https://github.com/to2mbn/authlib-agent)）。（好像有点扯远了）
+
+虽然mojang没有实现这个功能，但我们总得防范与未然吧，而且正版启动器以及HMCL等启动器都有实现这个功能。那么在jmccc中应该如何做到呢？
+
+首先要为`CharacterSelector`接口编写一个实现类。这个接口中定义了一个`select(GameProfile[])`方法，即从所给的角色中选择一个。（GameProfile即角色）
+
+下面给出一个例子：
+```java
+package yushijinhun.jmccc.test;
+
+import java.util.Scanner;
+import org.to2mbn.jmccc.auth.yggdrasil.CharacterSelector;
+import org.to2mbn.jmccc.auth.yggdrasil.core.GameProfile;
+
+public class MyCharacterSelector implements CharacterSelector {
+
+        @Override
+        public GameProfile select(GameProfile[] availableProfiles) {
+                // 与用户交互
+                for (int i = 0; i < availableProfiles.length; i++) {
+                        System.out.printf("[%d] %s%n", i, availableProfiles[i].getName());
+                }
+                System.out.printf("请从上面的角色中选择一个（输入序号）：");
+                Scanner scanner = new Scanner(System.in);
+                int index = scanner.nextInt();
+
+                // 返回要使用的角色
+                return availableProfiles[index];
+        }
+}
+```
+
+上面我们知道了可以使用`YggdrasilAuthenticator.password(String, String)`这个工厂方法创建一个YggdrasilAuthenticator，也知道了可以用`YggdrasilAuthenticator.refreshWithPassword(String, String)`刷新当前session。
+如果说我们要进行角色选择，应该用什么方法来传递给YggdrasilAuthenticator一个CharacterSelector，让它知道在选择角色时通知我们呢？
+这就要使用`YggdrasilAuthenticator.password(String, String, CharacterSelector)`和`YggdrasilAuthenticator.refreshWithPassword(String, String, CharacterSelector)`。（两个重载方法）
+在进行登录时，假如需要对角色进行选择，则YggdrasilAuthenticator会调用CharacterSelector的`select(GameProfile[])`。
+（注：只有当可以进行角色选择时才会调用`select(GameProfile[])`）
+
+示例如下：
+（注：因为mojang不能有多个角色，所以我使用了authlib-agent自己建了个yggdrasil服务端，下面的代码和上面的会略有出入。关于jmccc自定义yggdrasil服务提供商，请见第12节）
+```java
+package yushijinhun.jmccc.test;
+
+import org.to2mbn.jmccc.auth.yggdrasil.YggdrasilAuthenticator;
+import org.to2mbn.jmccc.auth.yggdrasil.core.AuthenticationService;
+import org.to2mbn.jmccc.auth.yggdrasil.core.yggdrasil.YggdrasilServiceBuilder;
+
+public class AuthTest {
+
+        public static void main(String[] args) throws Exception {
+                AuthenticationService authenticationService = YggdrasilServiceBuilder.create()
+                                .setAPIProvider(new yushijinhunYggdrasilAPIProvider())
+                                .loadSessionPublicKey("/home/yushijinhun/yushijinhun_yggdrasil_pubkey.der")
+                                .buildAuthenticationService();
+
+                // 用特定的AuthenticationService创建一个AuthenticationService
+                // 这样这个YggdrasilAuthenticator就会向我的Yggdrasil服务请求，而不是Mojang的
+                YggdrasilAuthenticator authenticator = new YggdrasilAuthenticator(authenticationService);
+
+                // 然后用密码登录
+                authenticator.refreshWithPassword("yushijinhun@gmail.com", "123456", new MyCharacterSelector());
+
+                // 输出登录信息
+                System.out.println(authenticator.auth());
+        }
+}
+```
+
+控制台输出：
+```
+[0] test_player
+[1] yushijinhun
+请从上面的角色中选择一个（输入序号）：1
+AuthInfo [username=yushijinhun, token=9395d1cdc7cf40a9a9fcf728aabdd7e7, uuid=8faf6e06d9e147fa8f63b9a6c19c5d5b, properties={}, userType=mojang]
+```
+
+> 因为这个yggdrasil服务端是我测试用的，在mojang服务器上并没有这个账号，所以不打码也无妨。
+
+除了在主动刷新时进行角色选择，在被动刷新时也可以进行角色选择。只需对上面的MyYggdrasilAuthenticator做一下修改。
+将tryPasswordLogin()中的return改为如下：
+```java
+return YggdrasilAuthenticator.createPasswordProvider(email, password, new MyCharacterSelector());
+```
+
+可以看到第三个参数发生了变化。原来是`null`，代表使用默认的角色选择器。而现在是使用我们所指定的角色选择器。
+
+再编写代码测试一下：
+```java
+package yushijinhun.jmccc.test;
+
+import org.to2mbn.jmccc.auth.yggdrasil.YggdrasilAuthenticator;
+import org.to2mbn.jmccc.auth.yggdrasil.core.AuthenticationService;
+import org.to2mbn.jmccc.auth.yggdrasil.core.yggdrasil.YggdrasilServiceBuilder;
+
+public class AuthTest {
+
+        public static void main(String[] args) throws Exception {
+                AuthenticationService authenticationService = YggdrasilServiceBuilder.create()
+                                .setAPIProvider(new yushijinhunYggdrasilAPIProvider())
+                                .loadSessionPublicKey("/home/yushijinhun/yushijinhun_yggdrasil_pubkey.der")
+                                .buildAuthenticationService();
+
+                // 用特定的AuthenticationService创建一个AuthenticationService
+                // 这样这个YggdrasilAuthenticator就会向我的Yggdrasil服务请求，而不是Mojang的
+                YggdrasilAuthenticator authenticator = new MyYggdrasilAuthenticator(authenticationService);
+
+                // 输出登录信息
+                System.out.println(authenticator.auth());
+        }
+}
+```
+
+可以看到只是将上面例子里的refreshWithPassword删掉了，并且换成了MyYggdrasilAuthenticator（因为我们要处理被动刷新）。变主动刷新为被动刷新，不指定密码，让YggdrasilAuthenticator来询问我们密码。
+
+控制台输出：
+```
+邮箱：yushijinhun@gmail.com
+密码：123456
+[0] test_player
+[1] yushijinhun
+请从上面的角色中选择一个（输入序号）：1
+AuthInfo [username=yushijinhun, token=889af3a4d0f04277aaf3431f0a48a38e, uuid=8faf6e06d9e147fa8f63b9a6c19c5d5b, properties={}, userType=mojang]
+```
+
+
+第3节到此便结束了，内容可能不太好理解，但只要各位多写代码运行运行就没问题。
 
